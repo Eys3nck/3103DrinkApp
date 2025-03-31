@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drink Monitor Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+    }
+    .camera-card {
+      border: 1px solid #ccc;
+      padding: 1rem;
+      margin-bottom: 2rem;
+    }
+    #canvasWrapper {
+      position: relative;
+      display: inline-block;
+    }
+    #previewCanvas {
+      border: 2px solid #333;
+      cursor: crosshair;
+    }
+    #status {
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Drink Monitor Setup</h1>
+
+  <div>
+    <label for="cameraSelect">Select Camera:</label>
+    <select id="cameraSelect">
+      <option value="http://192.168.1.145">ESP Cam #1</option>
+      <!-- Simulated list -->
+    </select>
+    <label for="tableName">Table Name:</label>
+    <input type="text" id="tableName" placeholder="e.g. Table 3">
+    <button onclick="assignCamera()">Assign</button>
+  </div>
+
+  <div class="camera-card">
+    <h2>Live Preview</h2>
+    <div id="canvasWrapper">
+      <canvas id="previewCanvas" width="320" height="240"></canvas>
+    </div>
+    <br>
+    <button onclick="refreshPreview()">Refresh Preview</button>
+    <button onclick="uploadFrame()">Send to AI</button>
+    <div id="status"></div>
+  </div>
+
+<script>
+  const previewCanvas = document.getElementById('previewCanvas');
+  const ctx = previewCanvas.getContext('2d');
+  let startX, startY, endX, endY;
+
+  previewCanvas.addEventListener('mousedown', e => {
+    const rect = previewCanvas.getBoundingClientRect();
+    startX = e.clientX - rect.left;
+    startY = e.clientY - rect.top;
+  });
+
+  previewCanvas.addEventListener('mouseup', e => {
+    const rect = previewCanvas.getBoundingClientRect();
+    endX = e.clientX - rect.left;
+    endY = e.clientY - rect.top;
+    drawTableBox();
+  });
+
+  function drawTableBox() {
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+  }
+
+  function assignCamera() {
+    const cameraIP = document.getElementById('cameraSelect').value;
+    const tableName = document.getElementById('tableName').value;
+    if (cameraIP && tableName) {
+      localStorage.setItem(cameraIP, tableName);
+      alert(`Assigned ${cameraIP} to ${tableName}`);
+    }
+  }
+
+  function refreshPreview() {
+    const cameraIP = document.getElementById('cameraSelect').value;
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => ctx.drawImage(img, 0, 0, previewCanvas.width, previewCanvas.height);
+    img.src = `${cameraIP}/capture?${Date.now()}`;
+  }
+
+  function uploadFrame() {
+    previewCanvas.toBlob(blob => {
+      const formData = new FormData();
+      const cameraIP = document.getElementById('cameraSelect').value;
+      const tableName = localStorage.getItem(cameraIP) || 'unknown';
+      formData.append('image', blob, 'frame.jpg');
+      formData.append('camera_id', tableName);
+
+      fetch('http://localhost:5000/upload', {
+        method: 'POST',
+        body: formData
+      })
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('status').textContent = `Drink level: ${data.level}`;
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('status').textContent = '❌ Upload failed';
+        });
+    }, 'image/jpeg');
+  }
+</script>
+</body>
+</html>
